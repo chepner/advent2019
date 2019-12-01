@@ -1,4 +1,5 @@
 import System.IO
+import System.Environment
 
 fuelReq :: Int -> Int
 fuelReq m = m `div` 3  - 2
@@ -12,5 +13,10 @@ realFuelReq m = let fuelMass = fuelReq m
 
 
 main = do
-    contents <- readFile "day1a.input"
-    print (sum $ map realFuelReq $ map read $ lines contents)
+    masses <- lines <$> readFile "day1a.input"
+    a <- getArgs
+    let f = case a of
+              ["a"] -> fuelReq
+              ["b"] -> realFuelReq
+              otherwise -> error "'a' or 'b'"
+    print (sum $ map f $ map read $ masses)
