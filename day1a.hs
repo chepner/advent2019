@@ -18,7 +18,10 @@ main = do
     
     a <- getArgs
 
+    let doit :: (Int -> Int) -> IO ()
+        doit f = print $ sum $ (map f masses)
+
     case a of
-      ["a"] -> print (sum $ map fuelReq $ masses)
-      ["b"] -> print (sum $ map realFuelReq $ masses)
+      ["a"] -> doit fuelReq
+      ["b"] -> doit realFuelReq
       otherwise -> die "One argument 'a' or 'b' is required"
