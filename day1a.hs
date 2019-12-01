@@ -1,5 +1,6 @@
 import System.IO
 import System.Environment
+import System.Exit
 
 fuelReq :: Int -> Int
 fuelReq m = m `div` 3  - 2
@@ -13,10 +14,11 @@ realFuelReq m = let fuelMass = fuelReq m
 
 
 main = do
-    masses <- lines <$> readFile "day1a.input"
+    masses <- (map read . lines) <$> readFile "day1a.input"
+    
     a <- getArgs
-    let f = case a of
-              ["a"] -> fuelReq
-              ["b"] -> realFuelReq
-              otherwise -> error "'a' or 'b'"
-    print (sum $ map f $ map read $ masses)
+
+    case a of
+      ["a"] -> print (sum $ map fuelReq $ masses)
+      ["b"] -> print (sum $ map realFuelReq $ masses)
+      otherwise -> die "One argument 'a' or 'b' is required"
