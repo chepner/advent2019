@@ -2,7 +2,7 @@ import System.IO
 import Data.List.Split
 import qualified Data.Vector as V
 
---import Control.Monad.Trans.State
+import Control.Monad.Trans.State
 
 type Program = V.Vector Int
 type PC = Int
@@ -60,14 +60,16 @@ tryIt p inp@(x,y) = let p' = p V.// [(1,x), (2,y)]
 expectedOutput :: Int
 expectedOutput = 19690720
 
-fails :: Result -> Bool
-fails (_, x) = x /= expectedOutput
+search :: Program -> Int -> State [Input] Int
+search p g = do
+  mods <- get
+  let (success:_) = dropWhile (\(_,x) -> x /= g) $ map (tryIt p) mods
+      ((noun, verb), _) = success
+  return $ noun * 100 + verb
 
 main = do
   program <- getData "day02.input"
   let mods = [(noun,verb) | noun <- [0..100], verb <- [0..100]]
-      (success:_) = dropWhile fails $ map (tryIt program) mods
-      ((noun, verb), _) = success
-  print $ noun*100 + verb -- 7621
+  print $ evalState (search program expectedOutput) mods
   
   
