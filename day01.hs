@@ -12,9 +12,12 @@ realFuelReq m = let fuelMass = fuelReq m
                 in if fuelMassReq <= 0 then fuelMass else (fuelMass + realFuelReq fuelMass)
 
 
+readMasses :: String -> IO [Int]
+readMasses fname = (map read . lines) <$> readFile fname
+
 
 main = do
-    masses <- (map read . lines) <$> readFile "day01.input"
+    masses <- readMasses "day01.input"
     
     a <- getArgs
 
