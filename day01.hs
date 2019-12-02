@@ -14,7 +14,7 @@ realFuelReq m = let fuelMass = fuelReq m
 
 
 main = do
-    masses <- (map read . lines) <$> readFile "day1a.input"
+    masses <- (map read . lines) <$> readFile "day01.input"
     
     a <- getArgs
 

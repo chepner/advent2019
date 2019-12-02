@@ -42,7 +42,7 @@ fails :: (Int, Int, Int) -> Bool
 fails (_, _, x) = x /= expectedOutput
 
 main = do
-  program <- getData "day2a.input"
+  program <- getData "day02.input"
   let mods = [(noun,verb) | noun <- [0..1000], verb <- [0..1000]]
       ((noun,verb,_):_) = dropWhile fails $ map (tryIt program) mods
   print $ noun*100 + verb -- 7621

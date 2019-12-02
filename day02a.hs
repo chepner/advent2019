@@ -31,7 +31,7 @@ getData fname = do
 
 
 main = do
-  program <- getData "day2a.input"
+  program <- getData "day02.input"
   let mod_program = program V.// [(1, 12), (2, 2)]
       result = fst (eval mod_program 0)
   print $ result V.! 0  -- 3306701
