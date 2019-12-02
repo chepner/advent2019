@@ -24,17 +24,16 @@ eval p pc = let opcode = p V.! pc
                               in eval (p V.// [(dest, f op1 op2)]) (pc + 4)
 
 
-getData :: FilePath -> IO [Int]
+getData :: FilePath -> IO (V.Vector Int)
 getData fname = do
     contents <- readFile fname
-    return $ map read $ splitOn "," contents
+    return $ V.fromList $ map read $ splitOn "," contents
 
 
 main = do
-  (p0:_:_:prest) <- getData "day2a.input"
-  let mod_program = p0:12:2:prest
-      program = V.fromList mod_program
-      result = fst (eval program 0)
+  program <- getData "day2a.input"
+  let mod_program = program V.// [(1, 12), (2, 2)]
+      result = fst (eval mod_program 0)
   print $ result V.! 0  -- 3306701
   
   
