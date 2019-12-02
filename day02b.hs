@@ -8,6 +8,7 @@ import Debug.Trace
 type Program = V.Vector Int
 type PC = Int
 type Input = (Int, Int)
+type Result = (Input, Int)
 
 
 eval :: Program -> PC -> (Program, PC)
@@ -31,20 +32,21 @@ getData fname = do
     return $ V.fromList $ map read $ splitOn "," contents
 
 
-tryIt :: Program -> Input -> (Int, Int, Int)
-tryIt p (x,y) = let p' = p V.// [(1,x), (2,y)]
-                in (x, y, fst (eval p' 0) V.! 0)
+tryIt :: Program -> Input -> Result
+tryIt p inp@(x,y) = let p' = p V.// [(1,x), (2,y)]
+                in (inp, fst (eval p' 0) V.! 0)
 
 expectedOutput :: Int
 expectedOutput = 19690720
 
-fails :: (Int, Int, Int) -> Bool
-fails (_, _, x) = x /= expectedOutput
+fails :: Result -> Bool
+fails (_, x) = x /= expectedOutput
 
 main = do
   program <- getData "day02.input"
-  let mods = [(noun,verb) | noun <- [0..1000], verb <- [0..1000]]
-      ((noun,verb,_):_) = dropWhile fails $ map (tryIt program) mods
+  let mods = [(noun,verb) | noun <- [0..100], verb <- [0..100]]
+      (success:_) = dropWhile fails $ map (tryIt program) mods
+      ((noun, verb), _) = success
   print $ noun*100 + verb -- 7621
   
   
