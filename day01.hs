@@ -2,17 +2,20 @@ import System.IO
 import System.Environment
 import System.Exit
 
-fuelReq :: Int -> Int
+type Mass = Int
+type FuelCalculator = Mass -> Mass
+
+fuelReq :: FuelCalculator
 fuelReq m = m `div` 3  - 2
 
 
-realFuelReq :: Int -> Int
+realFuelReq :: FuelCalculator
 realFuelReq m = let fuelMass = fuelReq m
                     fuelMassReq = fuelReq fuelMass
                 in if fuelMassReq <= 0 then fuelMass else (fuelMass + realFuelReq fuelMass)
 
 
-readMasses :: String -> IO [Int]
+readMasses :: FilePath -> IO [Mass]
 readMasses fname = (map read . lines) <$> readFile fname
 
 
@@ -21,7 +24,7 @@ main = do
     
     a <- getArgs
 
-    let doit :: (Int -> Int) -> IO ()
+    let doit :: FuelCalculator -> IO ()
         doit f = print $ sum $ (map f masses)
 
     case a of
