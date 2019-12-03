@@ -1,26 +1,65 @@
 import System.IO
 import Data.List.Split
+import qualified Data.Set as S
+import Control.Monad.Trans.State
+import Data.Foldable
+import Data.Ord
 
-type Segment = (Char, Int)
+data Direction  = R | L | U | D deriving (Show, Read)
+data Point = Pt Int Int deriving (Eq, Show, Ord)
+
+type Segment = (Direction, Int)
 type Path = [Segment]
 
-parseSegment :: String -> Segment
-parseSegment (c:val) = (c, read val)
+distance :: Point -> Point -> Int
+distance (Pt x1 y1) (Pt x2 y2) = abs (x1 - x2) + abs (y1 - y2)
 
+origin :: Point
+origin = Pt 0 0
+
+distanceFromOrigin :: Point -> Int
+distanceFromOrigin = distance origin
+
+step :: Direction -> State Point Point
+step d = do
+   Pt x y <- get
+   let p = case d of 
+             R -> Pt (x + 1) y
+             L -> Pt (x - 1) y
+             U -> Pt x (y + 1)
+             D -> Pt x (y - 1)
+   put p
+   return p
+
+segmentToDirs :: Segment -> [Direction]
+segmentToDirs (dir, len) = replicate len dir
+
+walkSegment :: Segment -> State Point [Point]
+walkSegment = traverse step . segmentToDirs
+  
+walkPath :: Path -> State Point [Point]
+walkPath p = concat <$> mapM walkSegment p
+
+parseSegment :: String -> Segment
+parseSegment (c:val) = (read [c], read val)
 
 parsePath :: String -> Path
 parsePath p = map parseSegment $ splitOn "," p
-
 
 readPaths :: FilePath -> IO (Path, Path)
 readPaths fname = do
   contents <- readFile fname
   let [path1, path2] = map parsePath $ lines contents
   return (path1, path2)
-  
 
+-- 3205 is too high
+-- 2200 is too high
+-- 855 is right!
 main = do
   (path1, path2) <- readPaths "day03.input"
-  print path1
-  print path2
+  let points1 = evalState (walkPath path1) origin
+      points2 = evalState (walkPath path2) origin
+      common = S.intersection (S.fromList points1) (S.fromList points2)
+  let p = minimumBy (comparing distanceFromOrigin) common
+  print (p, distanceFromOrigin p)
 
