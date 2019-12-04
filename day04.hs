@@ -16,21 +16,24 @@ hasNoGT = notElem GT
 hasLoneEQ :: [Ordering] -> Bool
 hasLoneEQ = elem [EQ] . group
 
+correctLength :: [Char] -> Bool
+correctLength [_,_,_,_,_,_] = True
+correctLength _ = False
+
+validateWith :: [[Ordering]->Bool] -> [Char] -> Bool
+validateWith ps l = correctLength l && and (map ($ generateOrderings l) ps)
+
 validate :: [Char] -> Bool
-validate l@[_,_,_,_,_,_] = let x = generateOrderings l
-                           in hasEQ x && hasNoGT x
-validate _ = False
+validate = validateWith [hasEQ, hasNoGT]
 
 betterValidate :: [Char] -> Bool
-betterValidate l@[_,_,_,_,_,_] = let x = generateOrderings l
-                                 in hasLoneEQ x && hasNoGT x
+betterValidate = validateWith [hasLoneEQ, hasNoGT]
                       
 
 processInput :: String -> [Int]
 processInput = map read . splitOn "-"
 
 main = do
-  let low, high::Int
-      [low, high] = processInput input
+  let [low, high] = processInput input
   print $ length $ filter (validate . show ) [low..high]  -- 1767
   print $ length $ filter (betterValidate . show ) [low..high]  -- 1192
