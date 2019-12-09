@@ -7,6 +7,7 @@ import Data.Bool
 
 import Control.Monad.Trans.State
 import Data.List
+import Data.Ord
 
 type Program = V.Vector Int
 type Addr = Int
@@ -70,9 +71,22 @@ getData fname = do
     return $ V.fromList $ map read $ splitOn "," contents
 
 
+runWithAmplifiers :: Program -- Program
+                   -> [Int]  -- amplifier order
+                   -> ([Int], Int) -- output
+runWithAmplifiers p inp@[a1,a2,a3,a4,a5] = let result0 = 0
+                                               (_, [result1]) = execState (eval p 0) ([a1, result0], [])
+                                               (_, [result2]) = execState (eval p 0) ([a2, result1], [])
+                                               (_, [result3]) = execState (eval p 0) ([a3, result2], [])
+                                               (_, [result4]) = execState (eval p 0) ([a4, result3], [])
+                                               (_, [result5]) = execState (eval p 0) ([a5, result4], [])
+                                           in (inp, result5)
+
+
 main = do
   [fname] <- getArgs
   program <- getData fname
-  let input = [5]
-      output = []
-  print $ execState (eval program 0) (input, output)  -- 4655956
+  let inputs = permutations [0,1,2,3,4]
+  -- traverse (print . runWithAmplifiers program) inputs
+  -- 212 too low
+  print $ maximumBy (comparing (\(_,o) -> o)) (map (runWithAmplifiers program) inputs) -- 225056
