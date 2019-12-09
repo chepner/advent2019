@@ -6,22 +6,16 @@
 import System.Environment
 import System.IO
 import Data.List.Split
+import Data.List
 import qualified Data.Map.Strict as M
 import Data.Maybe
+import Data.Ord
+import Data.Tuple
 
+-- Graph primitives
 type Node = String
-data NodeInfo = NodeInfo { orbitedBy :: [Node] }
-
-instance Semigroup NodeInfo where
-    a <> b = NodeInfo (orbitedBy a <> orbitedBy b)
-
-instance Monoid NodeInfo where
-    mempty = NodeInfo mempty
-    -- Should I redefine mconcat?
-    
-type OrbitalMap = M.Map Node NodeInfo
-
 type Edge = (Node, Node)
+
 
 listToEdge :: [Node] -> Edge
 listToEdge [x,y] = (x,y)
@@ -32,23 +26,31 @@ getEdges fname = do
   let edgesData = map (splitOn ")") contents
   return $ map listToEdge edgesData
 
-edge2map :: Edge -> OrbitalMap
-edge2map (x,y) = M.singleton x (NodeInfo [y])
 
-makeOrbitalMap :: [Edge] -> OrbitalMap
-makeOrbitalMap = M.unionsWith (<>) . map edge2map
+findPath :: [Edge] -> Node -> [Edge]
+findPath edges n = go n
+     where reversedEdges = map swap edges
+           go :: Node -> [Edge]
+           go "COM" = []
+           go r = case lookup r reversedEdges of
+                   Just p -> (r, p): go p
 
-computeHeights :: OrbitalMap -> [Int]
-computeHeights m = go 0 "COM"
-                     where go :: Int -> Node -> [Int]
-                           go n r = let childNodes = M.lookup r m
-                                    in n : (fromMaybe [] (orbitedBy <$> childNodes) >>= go (n + 1))
-                           
-  
+
+joinEdges :: Edge -> Edge -> [Node]
+joinEdges x@(a,b) y@(c,d) | b == c = [a,d]
+
+
+flatPath :: [Edge] -> [Node]
+flatPath [] = []
+flatPath (x:xs) = fst x : map snd xs
+
+
 
 main = do
   edges <- getEdges "day06.input"
-  let orbitalMap :: OrbitalMap
-      orbitalMap = makeOrbitalMap edges
-  print $ sum (computeHeights orbitalMap) -- 295936
+  let youPath = flatPath $ findPath edges "YOU"
+      santaPath = flatPath $ findPath edges "SAN"
+      i = intersect youPath santaPath
+  print $ i
+  print $ length (youPath \\ i) + length (santaPath \\ i) -- 459 too high. 457!
   
