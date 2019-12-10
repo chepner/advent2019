@@ -1,21 +1,23 @@
-import System.IO
-import Data.List.Split
-import Data.IntMap as IM
-import Debug.Trace
-import System.Environment
-import Data.Bool
+import System.IO (readFile)
+import System.Environment (getArgs)
+import Data.List.Split (splitOn)
+import qualified Data.IntMap as IM
+  (Key, IntMap, insert, fromList, lookup, toList)
+import Data.Bifunctor (bimap)
 
-import Control.Monad.Trans.State
-import Data.List
+import Control.Monad.Trans.State (State, get, put, modify, runState)
+import Data.List (unfoldr)
+import Data.Maybe (fromMaybe)
 
 type Addr = IM.Key
 type PC = IM.Key
 type RelBase = IM.Key
 type Value = Integer
+type Opcode = Int
 type Program = IM.IntMap Value
 type IntCodeIO = ([Value], [Value])
 
-data ProgramState = PS Program PC RelBase
+data ProgramState = PS Program PC RelBase deriving (Show)
 
 
 --- Break the parameter-mode portion of an instruction into
@@ -23,80 +25,125 @@ data ProgramState = PS Program PC RelBase
 digits :: Int -> [Int]
 digits = unfoldr (Just . uncurry (flip (,)) . (`divMod` 10))
 
+data ParameterMode = Position
+                   | Immediate
+                   | Relative
+  deriving (Show, Enum)
+
+
 position :: Program -> Addr -> Value
-position p addr = p IM.! addr
+position = readMemory
 
 immediate :: Program -> Addr -> Value
-immediate p addr = fromIntegral addr
+immediate _ addr = fromIntegral addr
 
 relative :: Program -> RelBase -> Addr -> Value
-relative p relbase addr = p IM.! (relbase + addr)
+relative p relbase addr = position p (relbase + addr)
 
 
-getValue :: Program -> Addr -> Value
-getValue = (IM.!)
+readMemory :: Program -> Addr -> Value
+readMemory p addr = fromMaybe 0 $ IM.lookup addr p
+
+writeMemory :: Program -> Addr -> Value -> Program
+writeMemory p addr v = IM.insert addr v p
 
 asAddr :: Value -> Addr
 asAddr = fromIntegral
 
+decodeInstruction :: Value -> ([ParameterMode], Opcode)
+decodeInstruction v = let decodeParamList = take 3 . map toEnum . digits . fromIntegral
+                          decodeOpcode = fromIntegral
+                      in bimap
+                          decodeParamList
+                          decodeOpcode
+                          (v `divMod` 100)
+
 -- Should use ReaderT and WriterT to handle input and output separately...
-eval :: ProgramState ->  State IntCodeIO ProgramState
-eval (PS p pc rb) = do
-     (input, output) <- get
-     let instruction = getValue p pc
-         (pmodes, opcode) = instruction `divMod` 100
-         pmodeList = digits (fromIntegral pmodes)
-     if opcode == 99
-     then return (PS p pc rb)  -- We're done; don't worry about incrementing the pc
-     else let a1 = p IM.! (pc + 1)  -- The three arguments
-              a2 = p IM.! (pc + 2)
-              a3 = p IM.! (pc + 3)
-              a1addr = asAddr a1
-              a2addr = asAddr a2
-              a3addr = asAddr a3
-              getParameter :: Int -> Addr -> Value
-              getParameter b = let pmode = fromIntegral $ pmodeList !! b
-                               in case pmode of
-                                    0 -> position p
-                                    1 -> immediate p
-                                    2 -> relative p rb
-                                    otherwise -> error $ "Unknown parameter mode " ++ show pmode
-              op1 = getParameter 0 a1addr
-              op2 = getParameter 1 a2addr
-              doAdd = eval $ PS (IM.insert a3addr (op1 + op2) p) (pc + 4) rb
-              doMul = eval $ PS (IM.insert a3addr (op1 * op2) p) (pc + 4) rb
-              doInp x = eval $ PS (IM.insert a1addr x p) (pc + 2) rb
-              doOut = eval $ PS p (pc + 2) rb
-              doJump tst = eval $ PS p (bool (pc + 3) (asAddr op2) (tst op1)) rb
-              doTest tst = let p' = IM.insert a3addr (fromIntegral $ fromEnum (tst op1 op2)) p
-                           in eval $ PS p' (pc + 4) rb
-          in do case opcode of
-                  1 -> doAdd
-                  2 -> doMul
-                  3 -> do let (x:xs) = input
-                          put (xs, output) 
-                          doInp x
-                  4 -> do put (input, output ++ [getParameter 0 a1addr])
-                          doOut
-                  5 -> doJump (/= 0)
-                  6 -> doJump (== 0)
-                  7 -> doTest (<)
-                  8 -> doTest (==) 
-                  9 -> eval $ PS p (pc + 2) (rb + fromIntegral op1)
+eval :: ProgramState -> Maybe Addr ->  State IntCodeIO ProgramState
+eval ps@(PS p pc rb) bk = do
+     let (pmodeList, opcode) = decodeInstruction (readMemory p pc)
+
+     -- The following definitions are irrelevant if opcode is 99 (Halt)
+     let a1 = readMemory p (pc + 1)  -- The three arguments, as Integers
+         a2 = readMemory p (pc + 2)
+         a3 = readMemory p (pc + 3)
+         loadValue :: Int -> Addr -> Value
+         loadValue b = case pmodeList !! b of
+                               Position -> position p
+                               Immediate -> immediate p
+                               Relative -> relative p rb
+
+         computeDestination b = case pmodeList !! b of
+                                 Position -> asAddr
+                                 Relative -> (rb +) . asAddr
+
+         -- The values loaded for the operands of 3-argument instructions
+         op1 = loadValue 0 (asAddr a1)
+         op2 = loadValue 1 (asAddr a2)
+
+         -- The instructions
+         nextStep a b c = case bk of
+                           Just x | x == pc -> return (PS a b c)
+                           otherwise -> eval (PS a b c) bk
+         -- A three-argument instruction. 
+         doArith f  = let op1 = loadValue 0 (asAddr a1)
+                          op2 = loadValue 1 (asAddr a2)
+                          dest = computeDestination 2 a3
+                          value = f op1 op2
+                          p' = writeMemory p dest value
+                          pc' = pc + 4
+                      in nextStep p' pc' rb
+         -- XXX What is *wrong* with this??
+         doInput x  = let dest = computeDestination 0 a1
+                          p' = writeMemory p dest x
+                          pc' = pc + 2
+                      in nextStep p' pc' rb
+         doOutput   =    nextStep p (pc + 2) rb
+         doJump tst = let op1 = loadValue 0 (asAddr a1)
+                          op2 = loadValue 1 (asAddr a2)
+                          pc' = if tst op1 then asAddr op2 else (pc + 3)
+                      in nextStep p pc' rb
+         doTest tst = let 
+                          op1 = loadValue 0 (asAddr a1)
+                          op2 = loadValue 1 (asAddr a2)
+                          dest = computeDestination 2 a3 
+                          value = if tst op1 op2 then 1 else 0
+                          p' = writeMemory p dest value
+                          pc' = pc + 4
+                      in nextStep p' pc' rb
+
+     case opcode of
+          99 -> return ps
+          1 -> doArith (+)
+          2 -> doArith (*)
+          3 -> do (input, output) <- get
+                  let (x:xs) = input  -- XXX Should handle lack of input better
+                  put (xs, output) 
+                  doInput x
+          4 -> do modify (fmap (++ [op1]))
+                  doOutput
+          5 -> doJump (/= 0)
+          6 -> doJump (== 0)
+          7 -> doTest (<)
+          8 -> doTest (==) 
+          9 -> nextStep p (pc + 2) (rb + asAddr op1)
+          otherwise -> error $ "Unknown opcode " ++ show opcode ++ show pmodeList
+                         ++ " at " ++ show pc
 
 getData :: FilePath -> IO Program
 getData fname = do
     contents <- readFile fname
     let bytecodes :: [Integer]
-        bytecodes = Prelude.map read $ splitOn "," contents
+        bytecodes = map read $ splitOn "," contents
     return $ IM.fromList (zip [0..] bytecodes)
 
 
 main = do
   [fname] <- getArgs
   program <- getData fname
-  let input = [1]
-      output = []
+  let initialInput = [1]
   -- 203 is too low. I'm getting output of [203, 0], though, which I think means that the opcode 203 isn't working
   -- not that the BOOST code is 203
-  print $ execState (eval $ PS program 0 0) (input, output)
+  -- 1187721666102244 is too high. That still looks like a bad "opcode", though.
+  let (PS p pc rb, (input, output)) = runState (eval (PS program 0 0) Nothing ) (initialInput, [])
+  print output -- 3454977209
