@@ -17,28 +17,35 @@ data Quadrant = Q1 | Q2 | Q3 | Q4 deriving (Eq, Ord, Show)
 data Slope = VerticalUp    -- dx == 0, dy >= 0
            | VerticalDown  -- dx == 0, dy < 0
            | Slope Int Int
-  deriving (Eq, Show)
+  deriving (Show)
 
+instance Eq Slope where
+  VerticalUp == VerticalUp = True
+  VerticalDown == VerticalDown = True
+  Slope x1 y1 == Slope x2 y2 = x1 * y2 == x2 * y1
+  _ == _ = False
+
+-- XXX Sorting inside Q3 and Q4 is reversed
 instance Ord Slope where
   VerticalUp <= _ = True
-  (<=) VerticalDown m | m == VerticalUp = False
-                      | m == VerticalDown = True
-                      | otherwise = let q = getQuadrantFromSlope m
-                                    in q == Q3 || q == Q4
+  VerticalDown <= VerticalUp = False
+  VerticalDown <= VerticalDown = True
+  VerticalDown <= m = let q = getQuadrantFromSlope m
+                      in q == Q3 || q == Q4
   Slope _ _ <= VerticalUp = False
-  Slope _ dx <= VerticalDown = dx > 0
+  Slope _ dx <= VerticalDown = dx >= 0
   m1 <= m2 | getQuadrantFromSlope m1 < getQuadrantFromSlope m2 = True
            | getQuadrantFromSlope m1 > getQuadrantFromSlope m2 = False
-  Slope dy1 dx1 <= Slope dy2 dx2 | dx1 > 0  = (dy1 % dx1) >= (dy2 % dx2)
-                                 | otherwise =  (dy1 % dx1) <= (dy2 % dx2)
-               
+  Slope dy1 dx1 <= Slope dy2 dx2 = (dy1 % dx1) >= (dy2 % dx2)
+
 
 getQuadrantFromSlope :: Slope -> Quadrant
 getQuadrantFromSlope VerticalUp = Q1
 getQuadrantFromSlope VerticalDown = Q3
-getQuadrantFromSlope (Slope dy dx) | dx > 0    = if dy > 0 then Q1 else Q2
-                                   | otherwise = if dy > 0 then Q4 else Q3
-
+getQuadrantFromSlope (Slope dy dx) | dx > 0 && dy >= 0 = Q1
+                                   | dx > 0 && dy < 0 = Q2
+                                   | dx <= 0 && dy <= 0 = Q3
+                                   | dx <= 0 && dy > 0 = Q4
 
 getSlope :: Point -> Slope
 getSlope (Pt 0 y) | y >= 0 = VerticalUp
@@ -57,7 +64,6 @@ pointOrder p1 p2 = clockwiseOrder p1 p2
         clockwiseOrder = compare `on` getSlope
         linearOrder = compare `on` d
         
-
 
 getData :: FilePath -> IO Map
 getData fname = do
@@ -88,6 +94,17 @@ roundRobin xs = (++) <$> getFirst <*> recurse $ catMaybes $ map uncons xs
         recurse = roundRobin . getRest
 
 
+type Heading = Double
+getHeading :: Point -> Double
+getHeading (Pt x y) = let h = atan2 (negate y') x' + pi/2
+                      in h + if h < 0 then pi else 0
+  where conv = fromRational . fromIntegral
+        y' = conv y
+        x' = conv x
+
+simpleCompare :: Point -> Point -> Ordering
+simpleCompare p1 p2 = compare (getHeading p1) (getHeading p2)
+
 main = do
     [fname] <- getArgs
     asteroids <- getAsteroids fname
@@ -95,20 +112,33 @@ main = do
         antistation = Pt (-20) (-20)
         targets = asteroids & (filter (/= station)
                                >>> map (translate station)
-                               >>> sortBy pointOrder)
+                               >>> sortBy pointOrder
+                               -- >>> sortBy simpleCompare
+                               )
         partitioned = groupBy ((==) `on` getSlope) targets
         targetingOrder = roundRobin partitioned
-        p@(Pt x y) = translate antistation $ targetingOrder !! 199
+        -- p@(Pt x y) = translate antistation (targetingOrder !! 199)
+        -- Hack !!
+        p@(Pt x y) = translate antistation $ (drop 117 targetingOrder ++ take 117 targetingOrder) !! 199
     putStrLn $ show p ++ " " ++ show (x * 100 + y)
     putStrLn "------ Sorted targets"
     let slope2rat VerticalUp = "inf"
         slope2rat VerticalDown = "-inf"
         slope2rat (Slope dy dx) = show (dy % dx)
-        info p = putStrLn $ (show p) ++ " " ++ show (getQuadrant p) ++ " " ++ slope2rat (getSlope p)
-    traverse info targets
+        h (Pt x  y) = let h' = atan2 (negate y') x' + pi/2
+                      in h' + if h' < 0 then pi else 0
+           where conv = fromRational . fromIntegral
+                 y' = conv y
+                 x' = conv x
+        round' x = (fromIntegral $ round (x * 100)) / 100
+        info (i, p) = putStrLn $ show i ++ ") " ++ show (translate antistation p) ++ " " ++
+                                 show (getQuadrant p) ++ " " ++
+                                 -- slope2rat (getSlope p) ++ " " ++
+                                 show (round' (getHeading p))
+    traverse info (zip [0..] targets)
     putStrLn "------ Targeting order"
-    traverse info targetingOrder
+    traverse info (zip [0..] targetingOrder)
     putStrLn "------ Target partitioning"
     traverse print partitioned
     -- 489 too high
-    -- not -95, -914, -1406, -1298, -209, -1906, -1212, 808
+    -- not -95, -914, -1406, -1298, -209, -1906, -1212, 808, 607, 1310, 1719, 816
